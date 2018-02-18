@@ -1,9 +1,11 @@
 from .exceptions import CoreNLPServerError
+from .concurrent import ThreadPool
 from .serializers import PROTOBUF
 from .wrapper import Document
 from requests import Session
 import corenlp_protobuf
 import json
+import os
 
 
 _BOOL_MAP = {True: 'true', False: 'false'}
@@ -139,18 +141,19 @@ class StanfordCoreNLP:
     def annotate_one(self, text):
         return Document(self._annotate(text))
 
+    def annotate_many(self, texts, n_threads=None):
+
+        pool = ThreadPool(n_threads or os.cpu_count())
+        annotations = []
+
+        def annotate(doc, batch):
+            batch.append(self.annotate_one(doc))
+
+        for text in texts:
+            pool.put(annotate, doc=text, batch=annotations)
+
+        pool.join()
+        return annotations
+
     def close(self):
         self._client.close()
-
-
-def stanford_corenlp(host='127.0.0.1', port=9000, annotators=None, options=None):
-    if annotators:
-        annotators = annotators.split(',')
-    props = Properties.text_to_protobuf(annotators, options)
-    client = CoreNLPClient(props)
-
-    def nlp(text):
-        return client.post(url="http://{}:{}/".format(host, port),
-                           params=(('properties', str(props)),),
-                           data=text,)
-    return nlp
