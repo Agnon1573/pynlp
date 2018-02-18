@@ -413,3 +413,109 @@ class Quote:
     def text(self):
         return self._quote.text[1:-1]
 
+
+class DependencyEdge:
+
+    def __init__(self, dependency, gov_vertex, dep_vertex):
+        self._dependency = dependency
+        self._governor = gov_vertex
+        self._dependent = dep_vertex
+
+    def __str__(self):
+        return '({})-[{}]->({})'.format(str(self._governor),
+                                        self._dependency,
+                                        str(self._dependent))
+
+    @property
+    def dependency(self):
+        return self._dependency
+
+    @property
+    def governor(self):
+        return self._governor
+
+    @property
+    def dependent(self):
+        return self._dependent
+
+
+class DependencyTree:
+
+    def __init__(self, proto_doc, proto_sentence, proto_dependency):
+        self._doc = proto_doc
+        self._sentence = proto_sentence
+        self._dependency = proto_dependency
+        root = Root(self._doc, self._sentence)
+        root_gov = proto_sentence.token[proto_dependency.root[0] - 1]
+        root_dep = Token(self._doc, self._sentence, root_gov)
+        self._governors = {root_dep: root}
+        self._dependents = {}
+        self._dependencies = {root_dep: '-ROOT-'}
+        tokens = proto_sentence.token
+        for proto_edge in proto_dependency.edge:
+            source = Token(proto_doc, proto_sentence, tokens[proto_edge.source - 1])
+            target = Token(proto_doc, proto_sentence, tokens[proto_edge.target - 1])
+            self._governors[target] = source
+            self._dependencies[target] = proto_edge.dep
+            self._dependents.setdefault(source, []).append(target)
+        for key in self._dependents:
+            self._dependents[key] = frozenset(self._dependents[key])
+        self._dependents[root] = [root_dep]
+        self._root = root_dep
+
+    def __repr__(self):
+        return '<{}: [sentence: {}]>'.format(
+            self.__class__.__name__,
+            self._sentence.sentenceIndex
+        )
+
+    @property
+    def root(self):
+        return self._root
+
+    def governor_of(self, token_vertex):
+        return self._governors[token_vertex]
+
+    def dependents_of(self, token_vertex):
+        return self._dependents[token_vertex]
+
+    def dependency(self, token_vertex):
+        return self._dependencies[token_vertex]
+
+    def dependencies(self, dependency):
+        return [DependencyEdge(dependency, self._governors[target], target)
+                for target, dependency_ in self._dependencies.items() if dependency_ == dependency]
+
+    def siblings_of(self, token_vertex):
+        return {vertex for vertex in self._dependents[self._governors[token_vertex]]
+                if vertex != token_vertex}
+
+    def is_ancestor(self, descendant, ancestor): # todo: TEST meh
+        raise NotImplementedError('Method under development. ')
+        parent = descendant
+        while parent in self._governors:
+            parent = self._governors[parent]
+            if parent == ancestor:
+                return True
+        return False
+
+    def common_ancestor(self, vertex1, vertex2): # todo: TEST meh
+        raise NotImplementedError('Method under development. ')
+        parent1 = vertex1
+        parent2 = vertex2
+        while parent2 in self._governors:
+            while parent1 in self._governors:
+                parent1 = self._governors[parent1]
+                if parent1 == parent2:
+                    return parent2
+            parent2 = self._governors[parent2]
+        return None
+
+    @property
+    def vertices(self):
+        return [vertex for vertex in self._governors.keys()]
+
+    @property
+    def edges(self):
+        return [DependencyEdge(self._dependencies[target], self._governors[target], target)
+                for target in self._governors.keys()]
